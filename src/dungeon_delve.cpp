@@ -21,9 +21,90 @@
 #include <cstdlib>
 #include <cstring>
 #include <memory>
+#include <iomanip>
+#include <iostream>
 #include <string>
 #include <utility>
 #include <vector>
+
+/* ---------------------------------------------------------------------------
+   Polymorphic descriptions and roster.
+   --------------------------------------------------------------------------- */
+
+void Hero::describe(std::ostream& out) const
+{
+    out << "  [Hero]     " << std::left << std::setw(13) << name
+        << hp << "/" << max_hp << " HP   combatant\n";
+}
+
+void Monster::describe(std::ostream& out) const
+{
+    out << "  [Monster]  " << std::left << std::setw(13) << name
+        << hp << "/" << max_hp << " HP   combatant, lootable\n";
+}
+
+void Merchant::describe(std::ostream& out) const
+{
+    out << "  [Merchant] " << std::left << std::setw(13) << name
+        << "--          lootable\n";
+}
+
+void describe_as(const Describable& item, std::ostream& out)
+{
+    item.describe(out);
+}
+
+int inspect_combatant(const Combatant& item)
+{
+    return item.hp;
+}
+
+const char* inspect_lootable(const Lootable& item)
+{
+    return item.loot_kind();
+}
+
+void Roster::describe_all(std::ostream& out) const
+{
+    out << "roster.describe_all()\n";
+    for (const Entity* entity : entities_)
+        entity->describe(out);
+}
+
+void print_roster_demo()
+{
+    HeroPtr ash = make_hero("Ash", 100, 10, 3);
+    MonsterPtr kobold = make_monster("Kobold", "kobold", 12, 4, 1, 6, ABIL_BITE);
+    MerchantPtr yarrow = make_merchant("Old Yarrow", 400, 35);
+
+    Roster roster;
+    roster.add(*ash);
+    roster.add(*kobold);
+    roster.add(*yarrow);
+    roster.describe_all(std::cout);
+
+    const Describable* hero_entity = static_cast<const Describable*>(
+        static_cast<const Entity*>(ash.get()));
+    const Describable* hero_combatant = static_cast<const Describable*>(
+        static_cast<const Combatant*>(ash.get()));
+    const Describable* monster_entity = static_cast<const Describable*>(
+        static_cast<const Entity*>(kobold.get()));
+    const Describable* monster_combatant = static_cast<const Describable*>(
+        static_cast<const Combatant*>(kobold.get()));
+    const Describable* monster_lootable = static_cast<const Describable*>(
+        static_cast<const Lootable*>(kobold.get()));
+    const Describable* merchant_entity = static_cast<const Describable*>(
+        static_cast<const Entity*>(yarrow.get()));
+    const Describable* merchant_lootable = static_cast<const Describable*>(
+        static_cast<const Lootable*>(yarrow.get()));
+    const bool one_shared_base = hero_entity == hero_combatant
+        && monster_entity == monster_combatant
+        && monster_entity == monster_lootable
+        && merchant_entity == merchant_lootable;
+    std::cout << (one_shared_base
+        ? "  (one Describable subobject per entity, not two)\n"
+        : "  ERROR: duplicate Describable subobject\n");
+}
 
 /* ---------------------------------------------------------------------------
    RNG. Rolled our own so the numbers are the same on every machine, which
@@ -810,6 +891,7 @@ int main(int argc, char** argv)
 
     dd_seed(seed);
 
+    print_roster_demo();
     int cleared = run_campaign(verbose);
 
     std::printf("\nstages cleared: %d / 6\n", cleared);

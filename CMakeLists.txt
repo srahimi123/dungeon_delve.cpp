@@ -91,6 +91,8 @@ target_link_libraries(dungeon_delve PRIVATE dd_sanitize_flags)
 # ---------------------------------------------------------------------------
 add_executable(ownership_audit labs/week01_ownership_audit/ownership_audit.cpp)
 target_link_libraries(ownership_audit PRIVATE dd_sanitize_flags)
+add_executable(prediction_table prediction_table.cpp)
+target_link_libraries(prediction_table PRIVATE dd_sanitize_flags)
 
 # ---------------------------------------------------------------------------
 # Tests.
