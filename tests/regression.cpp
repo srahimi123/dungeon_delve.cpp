@@ -71,12 +71,12 @@ static int test_encounter_resolves()
     const int START_HP = 500;
 
     dd_seed(SEED);
-    MonsterPtr soft = make_monster("Target A", "dummy", START_HP, 0, 0, 0, ABIL_NONE);
+    MonsterPtr soft = make_monster("Target A", "dummy", START_HP, 0, 0, 0, make_flail_ability());
     int reported_unarmored = resolve_attack_on_monster(*ash, *raw(soft));
     int removed_unarmored  = START_HP - soft->hp;
 
     dd_seed(SEED);
-    MonsterPtr armored = make_monster("Target B", "dummy", START_HP, 0, ARMOR, 0, ABIL_NONE);
+    MonsterPtr armored = make_monster("Target B", "dummy", START_HP, 0, ARMOR, 0, make_flail_ability());
     int reported_armored = resolve_attack_on_monster(*ash, *raw(armored));
     int removed_armored  = START_HP - armored->hp;
 
@@ -167,10 +167,10 @@ static int test_roster_survives_reallocation()
     HeroPtr ash = make_hero("Ash", 100000, 10, 3);
 
     Wave wave;
-    wave.push_back(make_monster("Brood Mother", "brood", 22, 5, 2, 18, ABIL_SUMMON));
-    wave.push_back(make_monster("Goblin A", "goblin", 10, 3, 0, 5, ABIL_NONE));
-    wave.push_back(make_monster("Goblin B", "goblin", 10, 3, 0, 5, ABIL_NONE));
-    wave.push_back(make_monster("Goblin C", "goblin", 10, 3, 0, 5, ABIL_NONE));
+    wave.push_back(make_monster("Brood Mother", "brood", 22, 5, 2, 18, make_summon_ability(), 1));
+    wave.push_back(make_monster("Goblin A", "goblin", 10, 3, 0, 5, make_flail_ability()));
+    wave.push_back(make_monster("Goblin B", "goblin", 10, 3, 0, 5, make_flail_ability()));
+    wave.push_back(make_monster("Goblin C", "goblin", 10, 3, 0, 5, make_flail_ability()));
 
     std::printf("        wave size %d, capacity %d before the round\n",
                 (int)wave.size(), (int)wave.capacity());

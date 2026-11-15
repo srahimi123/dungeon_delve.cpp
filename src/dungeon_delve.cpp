@@ -10,7 +10,6 @@
      - split this file up
      - the loot thing is weird sometimes, look at it
      - save files break if you rename a hero, don't rename heroes
-     - do NOT touch resolve_ability(), it took forever to get right
 
    -- B.R.
    =========================================================================== */
@@ -20,6 +19,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <exception>
 #include <memory>
 #include <iomanip>
 #include <iostream>
@@ -74,7 +74,7 @@ void Roster::describe_all(std::ostream& out) const
 void print_roster_demo()
 {
     HeroPtr ash = make_hero("Ash", 100, 10, 3);
-    MonsterPtr kobold = make_monster("Kobold", "kobold", 12, 4, 1, 6, ABIL_BITE);
+    MonsterPtr kobold = make_monster("Kobold", "kobold", 12, 4, 1, 6, make_bite_ability());
     MerchantPtr yarrow = make_merchant("Old Yarrow", 400, 35);
 
     Roster roster;
@@ -169,29 +169,6 @@ static int LOOT_VALUE[LOOT_COUNT] = {
 };
 
 /* ---------------------------------------------------------------------------
-   Ability tags.
-
-   Every ability in the game is an int. resolve_ability() switches on it.
-   Adding an ability means adding a tag here and a case in every switch that
-   looks at tags, and there are a few of those now.
-   --------------------------------------------------------------------------- */
-
-const char* ability_name(int tag)
-{
-    switch (tag) {
-        case ABIL_NONE:   return "Flail";
-        case ABIL_CLEAVE: return "Cleave";
-        case ABIL_BITE:   return "Bite";
-        case ABIL_MEND:   return "Mend";
-        case ABIL_HEX:    return "Hex";
-        case ABIL_SUMMON: return "Summon";
-        case ABIL_GUARD:  return "Guard";
-        case ABIL_RALLY:  return "Rally";
-    }
-    return "???";
-}
-
-/* ---------------------------------------------------------------------------
    Allocation helpers.
    --------------------------------------------------------------------------- */
 
@@ -212,10 +189,13 @@ HeroPtr make_hero(const char* name, int hp, int strength, int armor)
 }
 
 MonsterPtr make_monster(const char* name, const char* species,
-                        int hp, int strength, int armor,
-                        int gold_drop, int ability_tag)
+                        int hp, int strength, int armor, int gold_drop,
+                        std::shared_ptr<const Ability> ability, int summon_budget)
 {
-   auto m = std::make_unique<Monster>();
+    if (!ability)
+        throw std::invalid_argument("a monster must have an ability");
+
+    auto m = std::make_unique<Monster>();
     std::strncpy(m->name, name, 31);
     m->name[31] = '\0';
     std::strncpy(m->species, species, 23);
@@ -225,11 +205,12 @@ MonsterPtr make_monster(const char* name, const char* species,
     m->strength      = strength;
     m->armor         = armor;
     m->gold_drop     = gold_drop;
-    m->ability_tag   = ability_tag;
+    m->ability       = std::move(ability);
     m->is_dead       = 0;
-    m->summon_budget = (ability_tag == ABIL_SUMMON) ? 1 : 0;
+    m->summon_budget = summon_budget;
     return m;
 }
+
 
 MerchantPtr make_merchant(const char* name, int gold, int markup)
 {
@@ -329,111 +310,22 @@ int resolve_attack_on_hero(Monster& attacker, Hero& target)
 }
 
 /* ---------------------------------------------------------------------------
-   resolve_ability()
-
-   Do not touch this. It took forever to get right.
+   Polymorphic ability resolution. Failures are wrapped here so callers can
+   add encounter context without losing the original exception.
    --------------------------------------------------------------------------- */
 
-int resolve_ability(int tag, Monster& self, Hero& hero,
+int resolve_ability(const Ability& ability, Monster& self, Hero& hero,
                     Wave& wave, int verbose)
 {
-    int amount = 0;
-
-    switch (tag) {
-
-        case ABIL_NONE:
-            amount = resolve_attack_on_hero(self, hero);
-            if (verbose)
-                std::printf("  %s flails .................. %d damage\n",
-                            self.name, amount);
-            break;
-
-        case ABIL_CLEAVE:
-            amount = resolve_attack_on_hero(self, hero);
-            amount = amount + (amount / 2);
-            apply_damage_to_hero(hero, amount / 2);
-            if (verbose)
-                std::printf("  %s cleaves ................. %d damage\n",
-                            self.name, amount);
-            break;
-
-        case ABIL_BITE:
-            amount = resolve_attack_on_hero(self, hero);
-            if (dd_rand_range(1, 100) > 70) {
-                apply_damage_to_hero(hero, 2);
-                amount += 2;
-                if (verbose)
-                    std::printf("  %s bites deep ............. %d damage\n",
-                                self.name, amount);
-            } else {
-                if (verbose)
-                    std::printf("  %s bites ................... %d damage\n",
-                                self.name, amount);
-            }
-            break;
-
-        case ABIL_MEND:
-            amount = roll_dice(2, 4);
-            self.hp += amount;
-            if (self.hp > self.max_hp) self.hp = self.max_hp;
-            if (verbose)
-                std::printf("  %s mends ................... +%d HP\n",
-                            self.name, amount);
-            break;
-
-        case ABIL_HEX:
-            amount = roll_dice(1, 4);
-            hero.strength -= amount;
-            if (hero.strength < 1) hero.strength = 1;
-            if (verbose)
-                std::printf("  %s hexes ................... -%d STR\n",
-                            self.name, amount);
-            break;
-
-        case ABIL_SUMMON:
-            if (self.summon_budget > 0) {
-                self.summon_budget--;
-                MonsterPtr pup = make_monster("Whelp", "whelp", 6, 2, 0, 3, ABIL_NONE);
-                wave.push_back(std::move(pup));
-                amount = 1;
-                if (verbose)
-                    std::printf("  %s summons a Whelp!\n", self.name);
-            } else {
-                amount = resolve_attack_on_hero(self, hero);
-                if (verbose)
-                    std::printf("  %s is out of whelps ....... %d damage\n",
-                                self.name, amount);
-            }
-            break;
-
-        case ABIL_GUARD:
-            self.armor += 2;
-            amount = 2;
-            if (verbose)
-                std::printf("  %s guards .................. +2 armor\n",
-                            self.name);
-            break;
-
-        case ABIL_RALLY:
-            for (size_t i = 0; i < wave.size(); i++) {
-                if (!wave[i]->is_dead && raw(wave[i]) != &self)
-                    wave[i]->strength += 1;
-            }
-            amount = 1;
-            if (verbose)
-                std::printf("  %s rallies the pack ........ +1 STR each\n",
-                            self.name);
-            break;
-
-        default:
-            amount = resolve_attack_on_hero(self, hero);
-            if (verbose)
-                std::printf("  %s does something ......... %d damage\n",
-                            self.name, amount);
-            break;
+    try {
+        return ability.apply(self, hero, wave, verbose);
+    } catch (const std::exception&) {
+        std::throw_with_nested(AbilityResolutionError(
+            std::string("ability '") + ability.describe() + "' failed for " + self.name));
+    } catch (...) {
+        std::throw_with_nested(AbilityResolutionError(
+            std::string("ability '") + ability.describe() + "' failed for " + self.name));
     }
-
-    return amount;
 }
 
 /* ---------------------------------------------------------------------------
@@ -462,15 +354,16 @@ int count_species_in_bestiary(Bestiary& bestiary, const char* species)
 Bestiary build_bestiary()
 {
     Bestiary b;
-    b.push_back(make_monster("Kobold",      "kobold",    12,  4, 1,  6, ABIL_BITE));
-    b.push_back(make_monster("Goblin",      "goblin",    10,  3, 0,  5, ABIL_NONE));
-    b.push_back(make_monster("Cave Bat",    "bat",        5,  2, 0,  1, ABIL_BITE));
-    b.push_back(make_monster("Hex Adept",   "adept",     14,  3, 1, 11, ABIL_HEX));
-    b.push_back(make_monster("Bone Priest", "priest",    16,  4, 2, 14, ABIL_MEND));
-    b.push_back(make_monster("Warg",        "warg",      18,  6, 1, 10, ABIL_CLEAVE));
-    b.push_back(make_monster("Brood Mother","brood",     22,  5, 2, 18, ABIL_SUMMON));
-    b.push_back(make_monster("Shield Ogre", "ogre",      26,  7, 3, 21, ABIL_GUARD));
-    b.push_back(make_monster("Pack Leader", "packleader",20,  5, 1, 16, ABIL_RALLY));
+    b.push_back(make_monster("Kobold",      "kobold",    12,  4, 1,  6, make_bite_ability()));
+    b.push_back(make_monster("Goblin",      "goblin",    10,  3, 0,  5, make_flail_ability()));
+    b.push_back(make_monster("Cave Bat",    "bat",        5,  2, 0,  1, make_bite_ability()));
+    b.push_back(make_monster("Hex Adept",   "adept",     14,  3, 1, 11, make_hex_ability()));
+    b.push_back(make_monster("Bone Priest", "priest",    16,  4, 2, 14, make_mend_ability()));
+    b.push_back(make_monster("Warg",        "warg",      18,  6, 1, 10, make_cleave_ability()));
+    b.push_back(make_monster("Brood Mother","brood",     22,  5, 2, 18, make_summon_ability(), 1));
+    b.push_back(make_monster("Shield Ogre", "ogre",      26,  7, 3, 21, make_guard_ability()));
+    b.push_back(make_monster("Pack Leader", "packleader",20,  5, 1, 16, make_rally_ability()));
+    b.push_back(make_monster("Shatter Knight", "shatter", 24, 6, 2, 22, make_shatter_ability()));
     return b;
 }
 
@@ -481,7 +374,7 @@ MonsterPtr spawn_from_bestiary(Bestiary& bestiary, const char* species)
 
     return make_monster(proto->name, proto->species, proto->max_hp,
                         proto->strength, proto->armor, proto->gold_drop,
-                        proto->ability_tag);
+                        proto->ability, proto->summon_budget);
 }
 
 /* ---------------------------------------------------------------------------
@@ -505,6 +398,21 @@ int living_in_wave(Wave& wave)
     return n;
 }
 
+/* The outer layer handles a failure after resolve_ability has wrapped it.
+   Keeping this outside the loop leaves the dispatch path as one virtual call. */
+static int resolve_ability_safely(const Ability& ability, Monster& self,
+                                  Hero& hero, Wave& wave, int verbose) noexcept
+{
+    try {
+        return resolve_ability(ability, self, hero, wave, verbose);
+    } catch (const AbilityResolutionError& error) {
+        if (verbose)
+            std::printf("  %s's %s failed: %s\n", self.name,
+                        ability.describe(), error.what());
+        return 0;
+    }
+}
+
 /* Every living monster in the wave takes its turn against the hero.
    Returns the total damage the wave dealt this round. */
 int run_monster_round(Wave& wave, Hero& hero, int verbose,
@@ -521,7 +429,7 @@ int run_monster_round(Wave& wave, Hero& hero, int verbose,
         if (acted_names != nullptr)
             acted_names->push_back(std::string(m->name));
 
-        total += resolve_ability(m->ability_tag, *m, hero, wave, verbose);
+        total += resolve_ability_safely(*m->ability, *m, hero, wave, verbose);
     }
 
     return total;
@@ -748,7 +656,7 @@ void print_wave(Wave& wave)
                     wave[i]->name, wave[i]->species,
                     wave[i]->hp, wave[i]->max_hp,
                     wave[i]->strength, wave[i]->armor,
-                    ability_name(wave[i]->ability_tag));
+                    wave[i]->ability->describe());
     }
 }
 
@@ -760,7 +668,7 @@ void print_bestiary(Bestiary& bestiary)
                     bestiary[i]->name, bestiary[i]->species,
                     bestiary[i]->max_hp, bestiary[i]->strength,
                     bestiary[i]->armor, bestiary[i]->gold_drop,
-                    ability_name(bestiary[i]->ability_tag));
+                    bestiary[i]->ability->describe());
     }
 }
 

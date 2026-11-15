@@ -1,5 +1,5 @@
 /* ===========================================================================
-   dungeon_delve.h -- Build 3 entity hierarchy.
+   dungeon_delve.h -- Build 4 polymorphic ability system.
    =========================================================================== */
 
 #ifndef DUNGEON_DELVE_H
@@ -7,6 +7,7 @@
 
 #include <memory>
 #include <ostream>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -57,10 +58,12 @@ struct Hero : public Entity, public Combatant {
     void describe(std::ostream& out) const override;
 };
 
+class Ability;
+
 struct Monster : public Entity, public Combatant, public Lootable {
     char species[24]{};
     int gold_drop{};
-    int ability_tag{};
+    std::shared_ptr<const Ability> ability;
     int is_dead{};
     int summon_budget{};
     void describe(std::ostream& out) const override;
@@ -93,18 +96,39 @@ using MerchantPtr = std::unique_ptr<Merchant>;
 using Wave        = std::vector<MonsterPtr>;
 using Bestiary    = std::vector<MonsterPtr>;
 
+/* Every monster owns a shared, immutable ability object. The resolver only
+   calls this interface; it never asks what concrete ability it received. */
+class Ability {
+public:
+    virtual ~Ability() = default;
+    virtual const char* describe() const = 0;
+    virtual int apply(Monster& self, Hero& hero, Wave& wave, int verbose) const = 0;
+};
+
+class AbilityFailure : public std::runtime_error {
+public:
+    using std::runtime_error::runtime_error;
+};
+
+class AbilityResolutionError : public std::runtime_error {
+public:
+    using std::runtime_error::runtime_error;
+};
+
+std::shared_ptr<const Ability> make_flail_ability();
+std::shared_ptr<const Ability> make_cleave_ability();
+std::shared_ptr<const Ability> make_bite_ability();
+std::shared_ptr<const Ability> make_mend_ability();
+std::shared_ptr<const Ability> make_hex_ability();
+std::shared_ptr<const Ability> make_summon_ability();
+std::shared_ptr<const Ability> make_guard_ability();
+std::shared_ptr<const Ability> make_rally_ability();
+std::shared_ptr<const Ability> make_shatter_ability();
+
 inline Monster* raw(Monster* p)                        { return p; }
 inline Monster* raw(const std::unique_ptr<Monster>& p) { return p.get(); }
 inline Monster* raw(const std::shared_ptr<Monster>& p) { return p.get(); }
 
-#define ABIL_NONE    0
-#define ABIL_CLEAVE  1
-#define ABIL_BITE    2
-#define ABIL_MEND    3
-#define ABIL_HEX     4
-#define ABIL_SUMMON  5
-#define ABIL_GUARD   6
-#define ABIL_RALLY   7
 
 void dd_seed(unsigned s);
 int  dd_rand();
@@ -118,7 +142,8 @@ int         loot_value_of(const char* loot_name);
 
 HeroPtr     make_hero(const char* name, int hp, int strength, int armor);
 MonsterPtr  make_monster(const char* name, const char* species, int hp,
-                         int strength, int armor, int gold_drop, int ability_tag);
+                         int strength, int armor, int gold_drop,
+                         std::shared_ptr<const Ability> ability, int summon_budget = 0);
 MerchantPtr make_merchant(const char* name, int gold, int markup);
 
 int compute_raw_damage(int strength, int dice_count, int dice_sides);
@@ -128,8 +153,7 @@ int apply_damage_to_hero(Hero& h, int incoming);
 int resolve_attack_on_monster(Hero& attacker, Monster& target);
 int resolve_attack_on_hero(Monster& attacker, Hero& target);
 
-const char* ability_name(int tag);
-int resolve_ability(int tag, Monster& self, Hero& hero, Wave& wave, int verbose);
+int resolve_ability(const Ability& ability, Monster& self, Hero& hero, Wave& wave, int verbose);
 
 Bestiary   build_bestiary();
 Monster*   find_in_bestiary(Bestiary& bestiary, const char* species);
