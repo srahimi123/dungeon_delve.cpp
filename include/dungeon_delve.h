@@ -10,6 +10,9 @@
 #include <stdexcept>
 #include <string>
 #include <vector>
+#include <map>
+#include <string_view>
+#include "data_layer.h"
 
 /*
    Describable is the shared top of the hierarchy. The name stays here so
@@ -94,7 +97,7 @@ using MonsterPtr  = std::unique_ptr<Monster>;
 using HeroPtr     = std::unique_ptr<Hero>;
 using MerchantPtr = std::unique_ptr<Merchant>;
 using Wave        = std::vector<MonsterPtr>;
-using Bestiary    = std::vector<MonsterPtr>;
+using Bestiary    = std::map<std::string, MonsterPtr>;
 
 /* Every monster owns a shared, immutable ability object. The resolver only
    calls this interface; it never asks what concrete ability it received. */

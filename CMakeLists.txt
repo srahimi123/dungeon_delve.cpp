@@ -94,6 +94,17 @@ target_link_libraries(ownership_audit PRIVATE dd_sanitize_flags)
 add_executable(prediction_table prediction_table.cpp)
 target_link_libraries(prediction_table PRIVATE dd_sanitize_flags)
 
+# Week-specific concept labs are standalone targets. Add each lab that is
+# present without changing the engine's Build 4 source list.
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
+file(GLOB DD_LAB_DIRS RELATIVE ${CMAKE_CURRENT_SOURCE_DIR}/labs
+     ${CMAKE_CURRENT_SOURCE_DIR}/labs/*)
+foreach(dd_lab ${DD_LAB_DIRS})
+    if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/labs/${dd_lab}/CMakeLists.txt)
+        add_subdirectory(labs/${dd_lab})
+    endif()
+endforeach()
+
 # ---------------------------------------------------------------------------
 # Tests.
 # ---------------------------------------------------------------------------
@@ -127,3 +138,8 @@ set_tests_properties(encounter_resolves loot_table_intact roster_survives_reallo
     PROPERTIES
         ENVIRONMENT "ASAN_OPTIONS=detect_leaks=0:abort_on_error=0"
         TIMEOUT 60)
+
+# Build 5 data-layer acceptance checks.
+add_executable(build05_data_layer tests/build05_data_layer.cpp)
+target_link_libraries(build05_data_layer PRIVATE dd_engine dd_sanitize_flags)
+add_test(NAME build05_data_layer COMMAND build05_data_layer)

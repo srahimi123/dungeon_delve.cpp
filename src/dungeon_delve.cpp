@@ -249,11 +249,19 @@ const char* roll_loot()
 
 int loot_value_of(const char* loot_name)
 {
-    for (int i = 0; i < LOOT_COUNT; i++) {
-        if (std::strcmp(LOOT_TABLE[i], loot_name) == 0)
-            return LOOT_VALUE[i];
-    }
-    return 0;
+    if (loot_name == nullptr) return 0;
+
+    // Build the lookup index once while leaving the content team's raw arrays
+    // exactly as they are. Subsequent name lookups use std::map::find.
+    static const std::map<std::string, int> loot_index = [] {
+        std::map<std::string, int> index;
+        for (int i = 0; i < LOOT_COUNT; ++i)
+            index.emplace(LOOT_TABLE[i], LOOT_VALUE[i]);
+        return index;
+    }();
+
+    const auto found = loot_index.find(loot_name);
+    return found == loot_index.end() ? 0 : found->second;
 }
 
 /* ---------------------------------------------------------------------------
@@ -334,36 +342,33 @@ int resolve_ability(const Ability& ability, Monster& self, Hero& hero,
 
 Monster* find_in_bestiary(Bestiary& bestiary, const char* species)
 {
-    for (size_t i = 0; i < bestiary.size(); i++) {
-        if (std::strcmp(bestiary[i]->species, species) == 0)
-            return raw(bestiary[i]);
-    }
-    return nullptr;
+    if (species == nullptr) return nullptr;
+    auto it = bestiary.find(species);
+    return it == bestiary.end() ? nullptr : raw(it->second);
 }
 
 int count_species_in_bestiary(Bestiary& bestiary, const char* species)
 {
-    int n = 0;
-    for (size_t i = 0; i < bestiary.size(); i++) {
-        if (std::strcmp(bestiary[i]->species, species) == 0)
-            n++;
-    }
-    return n;
+    if (species == nullptr) return 0;
+    return bestiary.find(species) == bestiary.end() ? 0 : 1;
 }
 
 Bestiary build_bestiary()
 {
     Bestiary b;
-    b.push_back(make_monster("Kobold",      "kobold",    12,  4, 1,  6, make_bite_ability()));
-    b.push_back(make_monster("Goblin",      "goblin",    10,  3, 0,  5, make_flail_ability()));
-    b.push_back(make_monster("Cave Bat",    "bat",        5,  2, 0,  1, make_bite_ability()));
-    b.push_back(make_monster("Hex Adept",   "adept",     14,  3, 1, 11, make_hex_ability()));
-    b.push_back(make_monster("Bone Priest", "priest",    16,  4, 2, 14, make_mend_ability()));
-    b.push_back(make_monster("Warg",        "warg",      18,  6, 1, 10, make_cleave_ability()));
-    b.push_back(make_monster("Brood Mother","brood",     22,  5, 2, 18, make_summon_ability(), 1));
-    b.push_back(make_monster("Shield Ogre", "ogre",      26,  7, 3, 21, make_guard_ability()));
-    b.push_back(make_monster("Pack Leader", "packleader",20,  5, 1, 16, make_rally_ability()));
-    b.push_back(make_monster("Shatter Knight", "shatter", 24, 6, 2, 22, make_shatter_ability()));
+    auto add = [&b](MonsterPtr monster) {
+        b.emplace(monster->species, std::move(monster));
+    };
+    add(make_monster("Kobold",      "kobold",    12,  4, 1,  6, make_bite_ability()));
+    add(make_monster("Goblin",      "goblin",    10,  3, 0,  5, make_flail_ability()));
+    add(make_monster("Cave Bat",    "bat",        5,  2, 0,  1, make_bite_ability()));
+    add(make_monster("Hex Adept",   "adept",     14,  3, 1, 11, make_hex_ability()));
+    add(make_monster("Bone Priest", "priest",    16,  4, 2, 14, make_mend_ability()));
+    add(make_monster("Warg",        "warg",      18,  6, 1, 10, make_cleave_ability()));
+    add(make_monster("Brood Mother","brood",     22,  5, 2, 18, make_summon_ability(), 1));
+    add(make_monster("Shield Ogre", "ogre",      26,  7, 3, 21, make_guard_ability()));
+    add(make_monster("Pack Leader", "packleader",20,  5, 1, 16, make_rally_ability()));
+    add(make_monster("Shatter Knight", "shatter", 24, 6, 2, 22, make_shatter_ability()));
     return b;
 }
 
@@ -663,12 +668,13 @@ void print_wave(Wave& wave)
 void print_bestiary(Bestiary& bestiary)
 {
     std::printf("\nBestiary (%d entries):\n", (int)bestiary.size());
-    for (size_t i = 0; i < bestiary.size(); i++) {
+    for (const auto& entry : bestiary) {
+        const Monster& monster = *entry.second;
         std::printf("  %-14s %-11s %3d HP  str %-2d  armor %-2d  gold %-3d  %s\n",
-                    bestiary[i]->name, bestiary[i]->species,
-                    bestiary[i]->max_hp, bestiary[i]->strength,
-                    bestiary[i]->armor, bestiary[i]->gold_drop,
-                    bestiary[i]->ability->describe());
+                    monster.name, monster.species,
+                    monster.max_hp, monster.strength,
+                    monster.armor, monster.gold_drop,
+                    monster.ability->describe());
     }
 }
 
